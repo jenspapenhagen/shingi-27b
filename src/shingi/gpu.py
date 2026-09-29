@@ -7,9 +7,9 @@ import subprocess
 UNREPORTED = re.compile(r"\[?(N/A|Not Supported)\]?")
 VM_STAT_PAGE_SIZE = re.compile(r"page size of (\d+) bytes")
 # vm_stat counters counted as available: pages the system can hand to a new allocation without
-# swapping. Active and wired pages are excluded. Purgeable pages can overlap the other queues,
-# so this is an optimistic estimate; the floors below leave room for that.
-VM_STAT_AVAILABLE = ("Pages free", "Pages inactive", "Pages purgeable", "Pages speculative")
+# swapping. Active and wired pages are excluded. Purgeable pages are left out because they can
+# overlap the inactive and active queues, which would overstate the estimate.
+VM_STAT_AVAILABLE = ("Pages free", "Pages inactive", "Pages speculative")
 
 
 def is_macos():
@@ -39,7 +39,7 @@ def metal_snapshot():
         name = ""
     total, free = darwin_memory_mib()
     return {"uuid": None, "name": name or "Apple Silicon", "total_mib": total, "free_mib": free,
-            "memory_source": "vm_stat free + inactive + purgeable + speculative"}
+            "memory_source": "vm_stat free + inactive + speculative"}
 
 
 def selected_gpu():

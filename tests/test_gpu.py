@@ -124,9 +124,9 @@ def test_platform_dispatch(system, expected, monkeypatch):
     assert gpu.is_macos() is expected
 
 
-def test_darwin_memory_counts_free_inactive_purgeable_speculative(darwin, monkeypatch):
+def test_darwin_memory_counts_free_inactive_speculative(darwin, monkeypatch):
     monkeypatch.setattr(gpu.subprocess, 'check_output', fake_macos(24 * 1024 ** 3))
-    pages = 100000 + 300000 + 10000 + 50000
+    pages = 100000 + 300000 + 50000  # purgeable (10000) is excluded
     assert gpu.darwin_memory_mib() == (24 * 1024, pages * 16384 // 1024 ** 2)
 
 

@@ -48,7 +48,7 @@ fi
 if [ "$(uname -s)" = Darwin ]; then
     jobs="$(sysctl -n hw.ncpu)"
     cmake -S "$PRISM" -B "$BUILD" \
-        -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=ON -DBUILD_SHARED_LIBS=ON \
+        -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=ON -DGGML_OPENMP=OFF -DBUILD_SHARED_LIBS=ON \
         -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_CURL=OFF
 else
     jobs="$(nproc)"
