@@ -43,7 +43,9 @@ int main(int argc, char **argv) {
     if (!llama_supports_gpu_offload()) return 2;
     size_t gpu_count = 0;
     for (size_t i = 0; i < ggml_backend_dev_count(); ++i)
-        if (ggml_backend_dev_type(ggml_backend_dev_get(i)) == GGML_BACKEND_DEVICE_TYPE_GPU) ++gpu_count;
+        // Unified-memory GPUs such as the DGX Spark GB10 register as integrated GPUs.
+        if (auto type = ggml_backend_dev_type(ggml_backend_dev_get(i));
+            type == GGML_BACKEND_DEVICE_TYPE_GPU || type == GGML_BACKEND_DEVICE_TYPE_IGPU) ++gpu_count;
     if (gpu_count != 1) {
         std::cerr << "Expected one visible GPU; refusing CPU fallback or multiple devices\n";
         return 2;
