@@ -23,7 +23,6 @@ echo "shingi-27b: the first build compiles CUDA kernels and can take a while"
 if [ ! -e "$PRISM" ]; then
     mkdir -p "$SHINGI_HOME"
     git clone --quiet --no-checkout "$PRISM_URL" "$PRISM"
-    git -C "$PRISM" checkout --quiet --detach "$PRISM_REVISION"
 fi
 if [ "$(git -C "$PRISM" rev-parse HEAD 2>/dev/null)" != "$PRISM_REVISION" ]; then
     git -C "$PRISM" fetch --quiet origin "$PRISM_REVISION"
