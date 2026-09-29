@@ -31,11 +31,14 @@ int main(int argc, char **argv) {
         std::cerr << "usage: readout MODEL.gguf CONTEXT_TOKENS\n";
         return 2;
     }
+#ifndef __APPLE__
+    // Apple Silicon has exactly one Metal GPU and no CUDA device selection.
     const char *gpu = std::getenv("CUDA_VISIBLE_DEVICES");
     if (!gpu || !std::regex_match(gpu, std::regex("GPU-[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"))) {
         std::cerr << "Set CUDA_VISIBLE_DEVICES to exactly one full GPU UUID\n";
         return 2;
     }
+#endif
     int context = std::stoi(argv[2]);
     if (context < 512 || context > 16384) return 2;
     ggml_backend_load_all();
@@ -43,7 +46,8 @@ int main(int argc, char **argv) {
     if (!llama_supports_gpu_offload()) return 2;
     size_t gpu_count = 0;
     for (size_t i = 0; i < ggml_backend_dev_count(); ++i)
-        // Unified-memory GPUs such as the DGX Spark GB10 register as integrated GPUs.
+        // Unified-memory GPUs such as the DGX Spark GB10 register as integrated GPUs;
+        // Apple Metal (MTL0) registers as a GPU.
         if (auto type = ggml_backend_dev_type(ggml_backend_dev_get(i));
             type == GGML_BACKEND_DEVICE_TYPE_GPU || type == GGML_BACKEND_DEVICE_TYPE_IGPU) ++gpu_count;
     if (gpu_count != 1) {

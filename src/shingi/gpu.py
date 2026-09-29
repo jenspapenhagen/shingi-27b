@@ -1,9 +1,45 @@
-"""Portable CUDA memory gates. This module never manages system services."""
+"""Portable CUDA and Apple Metal memory gates. This module never manages system services."""
 import os
+import platform
 import re
 import subprocess
 
 UNREPORTED = re.compile(r"\[?(N/A|Not Supported)\]?")
+VM_STAT_PAGE_SIZE = re.compile(r"page size of (\d+) bytes")
+# vm_stat counters counted as available: pages the system can hand to a new allocation without
+# swapping. Active and wired pages are excluded. Purgeable pages can overlap the other queues,
+# so this is an optimistic estimate; the floors below leave room for that.
+VM_STAT_AVAILABLE = ("Pages free", "Pages inactive", "Pages purgeable", "Pages speculative")
+
+
+def is_macos():
+    return platform.system() == "Darwin"
+
+
+def darwin_memory_mib():
+    """Total unified memory (sysctl hw.memsize) and available memory (vm_stat) on macOS."""
+    try:
+        total = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True, timeout=10))
+        report = subprocess.check_output(["vm_stat"], text=True, timeout=10)
+        page_size = int(VM_STAT_PAGE_SIZE.search(report).group(1))
+        pages = {}
+        for line in report.splitlines()[1:]:
+            key, _, value = line.partition(":")
+            pages[key.strip().strip('"')] = value.strip().rstrip(".")
+        available = sum(int(pages[key]) for key in VM_STAT_AVAILABLE) * page_size
+    except (OSError, subprocess.SubprocessError, AttributeError, KeyError, ValueError) as exc:
+        raise RuntimeError("could not read unified memory from sysctl and vm_stat") from exc
+    return total // (1024 * 1024), available // (1024 * 1024)
+
+
+def metal_snapshot():
+    try:
+        name = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True, timeout=10).strip()
+    except (OSError, subprocess.SubprocessError):
+        name = ""
+    total, free = darwin_memory_mib()
+    return {"uuid": None, "name": name or "Apple Silicon", "total_mib": total, "free_mib": free,
+            "memory_source": "vm_stat free + inactive + purgeable + speculative"}
 
 
 def selected_gpu():
@@ -27,6 +63,8 @@ def system_memory_mib(path="/proc/meminfo"):
 
 
 def gpu_snapshot():
+    if is_macos():
+        return metal_snapshot()
     uuid = selected_gpu()
     try:
         row = subprocess.check_output(
@@ -50,10 +88,17 @@ def gpu_snapshot():
 
 
 def gpu_profile():
-    """Return the GPU UUID and the free-memory floors (MiB) before loading and during inference."""
+    """Return the GPU UUID (None on macOS) and the free-memory floors (MiB) before loading and during inference."""
     gpu = gpu_snapshot()
-    print(f"GPU {gpu['name']} ({gpu['uuid']}): {gpu['free_mib']} of {gpu['total_mib']} MiB free "
+    print(f"GPU {gpu['name']} ({gpu['uuid'] or 'Metal, unified memory'}): {gpu['free_mib']} of {gpu['total_mib']} MiB free "
           f"according to {gpu['memory_source']}", flush=True)
+    if gpu["uuid"] is None:
+        # Apple Silicon: the model needs about 8 GB at the 16K context, and macOS itself needs
+        # several GB. 16 GiB is the minimum; the target is 24 GB M-series Macs, where 12 GiB free
+        # before loading leaves the model plus about 4 GiB, and 2 GiB must stay free while serving.
+        if gpu["total_mib"] < 16 * 1024:
+            raise RuntimeError("Shingi 27B requires a Mac with at least 16 GiB of unified memory")
+        return None, 12 * 1024, 2 * 1024
     if gpu["total_mib"] < 20 * 1024:
         raise RuntimeError("Shingi 27B requires a GPU with at least 20 GiB usable VRAM")
     preload, headroom = (14, 4) if gpu["total_mib"] <= 32 * 1024 else (30, 10)

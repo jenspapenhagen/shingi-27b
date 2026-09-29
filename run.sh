@@ -43,7 +43,11 @@ check_prerequisites() {
     local os arch
     os="$(uname -s)"
     arch="$(uname -m)"
-    [ "$os" = Linux ] || die "Linux is required (found $os)"
+    if [ "$os" = Darwin ]; then
+        check_macos_prerequisites "$arch"
+        return
+    fi
+    [ "$os" = Linux ] || die "Linux or macOS on Apple Silicon is required (found $os)"
     case "$arch" in
         x86_64 | aarch64) ;;
         *) die "x86-64 or aarch64 is required (found $arch)" ;;
@@ -56,6 +60,21 @@ check_prerequisites() {
     need cmake "Install CMake 3.21 or later."
     need git "Install Git."
     need c++ "Install a C++17 compiler such as g++."
+    check_cxx17_and_uv
+}
+
+# Apple Silicon only: the runtime uses Metal, and Intel Macs have no supported GPU path.
+check_macos_prerequisites() {
+    [ "$1" = arm64 ] || die "macOS requires Apple Silicon (arm64); Intel Macs are not supported (found $1)"
+    # The Metal shaders are embedded and compiled at run time, so the Metal compiler is not needed.
+    xcode-select -p >/dev/null 2>&1 || die "the Xcode command line tools are required; run xcode-select --install"
+    need cmake "Install CMake 3.21 or later (for example: brew install cmake)."
+    need git "Install Git (it comes with the Xcode command line tools)."
+    need c++ "Install the Xcode command line tools: xcode-select --install"
+    check_cxx17_and_uv
+}
+
+check_cxx17_and_uv() {
     printf 'int main() { return 0; }\n' | c++ -std=c++17 -x c++ - -o /dev/null >/dev/null 2>&1 \
         || die "c++ cannot compile C++17; install a newer compiler"
     if ! command -v uv >/dev/null 2>&1; then
@@ -105,7 +124,8 @@ main() {
     bash scripts/build.sh
     say "syncing the Python environment"
     uv sync --locked --no-dev --quiet
-    select_gpu
+    # macOS has one Metal GPU; there is nothing to select.
+    [ "$(uname -s)" = Darwin ] || select_gpu
     exec uv run --locked --no-dev shingi-27b --executable "$SHINGI_HOME/bin/readout" \
         --host "${SHINGI_HOST:-127.0.0.1}" --port "${SHINGI_PORT:-8765}" "$@"
 }

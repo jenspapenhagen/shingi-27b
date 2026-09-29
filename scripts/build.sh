@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the pinned Prism llama.cpp runtime and Shingi's native readout into $SHINGI_HOME.
-# Skips all work when the readout was already built from the same revision, architectures and source.
+# Uses CUDA on Linux and Metal on macOS (Apple Silicon).
+# Skips all work when the readout was already built from the same revision, backend, architectures and source.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,14 +13,25 @@ PRISM="$SHINGI_HOME/prism"
 READOUT="$SHINGI_HOME/bin/readout"
 STAMP="$READOUT.stamp"
 
-stamp="$PRISM_REVISION $ARCHITECTURES $(sha256sum "$ROOT/src/native/readout.cpp" | cut -d' ' -f1)"
+if [ "$(uname -s)" = Darwin ]; then
+    # Metal builds use their own build directory and stamp, so a CUDA build is never reused.
+    BUILD="$PRISM/build-metal"
+    stamp="$PRISM_REVISION Darwin-metal $(shasum -a 256 "$ROOT/src/native/readout.cpp" | cut -d' ' -f1)"
+else
+    BUILD="$PRISM/build"
+    stamp="$PRISM_REVISION $ARCHITECTURES $(sha256sum "$ROOT/src/native/readout.cpp" | cut -d' ' -f1)"
+fi
 if [ -x "$READOUT" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$stamp" ]; then
     echo "shingi-27b: runtime already built at $PRISM_REVISION"
     exit 0
 fi
 
-echo "shingi-27b: building the Prism runtime at $PRISM_REVISION for CUDA architectures $ARCHITECTURES"
-echo "shingi-27b: the first build compiles CUDA kernels and can take a while"
+if [ "$(uname -s)" = Darwin ]; then
+    echo "shingi-27b: building the Prism runtime at $PRISM_REVISION for Metal"
+else
+    echo "shingi-27b: building the Prism runtime at $PRISM_REVISION for CUDA architectures $ARCHITECTURES"
+    echo "shingi-27b: the first build compiles CUDA kernels and can take a while"
+fi
 if [ ! -e "$PRISM" ]; then
     mkdir -p "$SHINGI_HOME"
     git clone --quiet --no-checkout "$PRISM_URL" "$PRISM"
@@ -33,18 +45,25 @@ if [ -n "$(git -C "$PRISM" status --porcelain --untracked-files=no)" ]; then
     exit 1
 fi
 
-jobs="$(nproc)"
-[ "$jobs" -le 8 ] || jobs=8  # CUDA kernel compilation needs several GB of RAM per job.
-cmake -S "$PRISM" -B "$PRISM/build" \
-    -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DGGML_NATIVE=OFF \
-    -DCMAKE_CUDA_ARCHITECTURES="$ARCHITECTURES" -DBUILD_SHARED_LIBS=ON \
-    -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF
-cmake --build "$PRISM/build" --target llama --parallel "$jobs"
+if [ "$(uname -s)" = Darwin ]; then
+    jobs="$(sysctl -n hw.ncpu)"
+    cmake -S "$PRISM" -B "$BUILD" \
+        -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=ON -DBUILD_SHARED_LIBS=ON \
+        -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_CURL=OFF
+else
+    jobs="$(nproc)"
+    [ "$jobs" -le 8 ] || jobs=8  # CUDA kernel compilation needs several GB of RAM per job.
+    cmake -S "$PRISM" -B "$BUILD" \
+        -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DGGML_NATIVE=OFF \
+        -DCMAKE_CUDA_ARCHITECTURES="$ARCHITECTURES" -DBUILD_SHARED_LIBS=ON \
+        -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF
+fi
+cmake --build "$BUILD" --target llama --parallel "$jobs"
 
 mkdir -p "$SHINGI_HOME/bin"
 c++ -std=c++17 -O2 -Wall -Wextra "$ROOT/src/native/readout.cpp" \
     -I"$PRISM/include" -I"$PRISM/ggml/include" -I"$PRISM/vendor" \
-    -L"$PRISM/build/bin" -Wl,-rpath,"$PRISM/build/bin" \
+    -L"$BUILD/bin" -Wl,-rpath,"$BUILD/bin" \
     -lllama -lggml -lggml-base -o "$READOUT"
 printf '%s\n' "$stamp" > "$STAMP"
 echo "shingi-27b: built $READOUT"

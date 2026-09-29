@@ -7,6 +7,12 @@ from shingi.backend import NativeReadout
 UUID = 'GPU-01234567-89ab-cdef-0123-456789abcdef'
 
 
+@pytest.fixture(autouse=True)
+def linux(monkeypatch):
+    # The CUDA tests describe Linux; Darwin tests opt in with the `darwin` fixture.
+    monkeypatch.setattr(gpu, 'is_macos', lambda: False)
+
+
 @pytest.mark.parametrize('value', ['', '0', '0,1', 'GPU-short', UUID + ',' + UUID])
 def test_requires_one_unambiguous_gpu(value, monkeypatch):
     monkeypatch.setenv('CUDA_VISIBLE_DEVICES', value)
@@ -80,3 +86,82 @@ def test_driver_failure_is_backend_unavailability(monkeypatch):
     monkeypatch.setattr(gpu.subprocess, 'check_output', fail)
     with pytest.raises(RuntimeError, match='could not query'):
         gpu.gpu_snapshot()
+
+
+VM_STAT = """Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                                   100000.
+Pages active:                                 900000.
+Pages inactive:                               300000.
+Pages speculative:                             50000.
+Pages throttled:                                   0.
+Pages wired down:                             200000.
+Pages purgeable:                               10000.
+"Translation faults":                    13132093240.
+"""
+
+
+def fake_macos(memsize, vm_stat=VM_STAT, calls=None):
+    outputs = {('sysctl', '-n', 'hw.memsize'): f'{memsize}\n',
+               ('sysctl', '-n', 'machdep.cpu.brand_string'): 'Apple M4 Pro\n',
+               ('vm_stat',): vm_stat}
+    def check_output(args, **kwargs):
+        if calls is not None:
+            calls.append(tuple(args))
+        return outputs[tuple(args)]
+    return check_output
+
+
+@pytest.fixture
+def darwin(monkeypatch):
+    monkeypatch.setattr(gpu, 'is_macos', lambda: True)
+    monkeypatch.delenv('CUDA_VISIBLE_DEVICES', raising=False)
+
+
+@pytest.mark.parametrize('system,expected', [('Darwin', True), ('Linux', False)])
+def test_platform_dispatch(system, expected, monkeypatch):
+    monkeypatch.undo()
+    monkeypatch.setattr(gpu.platform, 'system', lambda: system)
+    assert gpu.is_macos() is expected
+
+
+def test_darwin_memory_counts_free_inactive_purgeable_speculative(darwin, monkeypatch):
+    monkeypatch.setattr(gpu.subprocess, 'check_output', fake_macos(24 * 1024 ** 3))
+    pages = 100000 + 300000 + 10000 + 50000
+    assert gpu.darwin_memory_mib() == (24 * 1024, pages * 16384 // 1024 ** 2)
+
+
+def test_darwin_needs_no_uuid_or_nvidia_smi(darwin, monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(gpu.subprocess, 'check_output', fake_macos(24 * 1024 ** 3, calls=calls))
+    assert gpu.gpu_profile() == (None, 12 * 1024, 2 * 1024)
+    assert not any(call[0] == 'nvidia-smi' for call in calls)
+    snapshot = gpu.gpu_snapshot()
+    assert snapshot['name'] == 'Apple M4 Pro'
+    assert snapshot['memory_source'].startswith('vm_stat')
+    assert 'vm_stat' in capsys.readouterr().out
+
+
+def test_darwin_requires_16_gib(darwin, monkeypatch):
+    monkeypatch.setattr(gpu.subprocess, 'check_output', fake_macos(8 * 1024 ** 3))
+    with pytest.raises(RuntimeError, match='at least 16 GiB of unified memory'):
+        gpu.gpu_profile()
+    monkeypatch.setattr(gpu.subprocess, 'check_output', fake_macos(16 * 1024 ** 3))
+    assert gpu.gpu_profile() == (None, 12 * 1024, 2 * 1024)
+
+
+@pytest.mark.parametrize('vm_stat', ['', 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free: 1.\n',
+                                     VM_STAT.replace('16384', 'many')])
+def test_darwin_unreadable_memory_is_a_clear_error(vm_stat, darwin, monkeypatch):
+    monkeypatch.setattr(gpu.subprocess, 'check_output', fake_macos(24 * 1024 ** 3, vm_stat))
+    with pytest.raises(RuntimeError, match='sysctl and vm_stat'):
+        gpu.gpu_snapshot()
+
+
+def test_darwin_preload_gate_refuses_before_starting_the_runtime(darwin, monkeypatch):
+    low = VM_STAT.replace('300000.', '1000.')  # about 2.5 GiB available
+    monkeypatch.setattr(gpu.subprocess, 'check_output', fake_macos(24 * 1024 ** 3, low))
+    started = []
+    monkeypatch.setattr('shingi.backend.subprocess.Popen', lambda *a, **kw: started.append(a))
+    with pytest.raises(RuntimeError, match='12288 MiB free'):
+        NativeReadout('unused', 'unused')
+    assert started == []

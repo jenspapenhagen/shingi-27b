@@ -28,7 +28,8 @@ and starts the API on `http://127.0.0.1:8765`. Later runs reuse all of that.
 
 ## Requirements
 
-- Linux on x86-64 or aarch64.
+- Linux on x86-64 or aarch64 with an NVIDIA GPU, or macOS on Apple Silicon
+  (see [macOS](#macos)).
 - An NVIDIA GPU with at least 20 GiB of memory. The model uses about 9 GiB at
   the full 16K context. Designed for RTX 4090 class 24 GB cards; the NVIDIA DGX Spark
   (GB10, unified memory) is supported.
@@ -39,17 +40,28 @@ and starts the API on `http://127.0.0.1:8765`. Later runs reuse all of that.
   and Git. `run.sh` installs [uv](https://docs.astral.sh/uv/) if it is missing.
 - About 8 GB of disk for the weights, plus space for the runtime build.
 
+### macOS
+
+Apple Silicon Macs run the same runtime with Metal. 24 GB of unified memory or
+more is recommended; 16 GB is the minimum. At startup 12 GiB must be free, and
+2 GiB must stay free while serving. You need the Xcode command line tools
+(`xcode-select --install`), CMake and Git. Intel Macs are not supported.
+
+Macs are much slower than CUDA GPUs. On an M4 Pro (64 GB) the examples below
+(about 70 tokens) take roughly 1.2 s each and a request of about 1,100 tokens
+roughly 12.6 s. The model uses about 8 GB at the full 16K context.
+
 ## Configuration
 
 | Setting | Default | Change with |
 |---|---|---|
 | Port | `8765` | `--port N` or `SHINGI_PORT` |
 | Host | `127.0.0.1` | `--host H` or `SHINGI_HOST` |
-| GPU | the GPU with the most free memory | `CUDA_VISIBLE_DEVICES=GPU-<full UUID from nvidia-smi -L>` |
+| GPU (Linux) | the GPU with the most free memory | `CUDA_VISIBLE_DEVICES=GPU-<full UUID from nvidia-smi -L>` |
 | Model cache | the standard Hugging Face cache | `HF_HOME` (and `HF_TOKEN` if needed) |
 | Model revision | `main` | `SHINGI_REVISION` |
 | Build and checkout | `~/.cache/shingi-27b` | `SHINGI_HOME` |
-| CUDA architectures | `86;89;120;121` | `SHINGI_CUDA_ARCHITECTURES` |
+| CUDA architectures (Linux) | `86;89;120;121` | `SHINGI_CUDA_ARCHITECTURES` |
 
 Pass arguments through the one-liner with `bash -s --`:
 
