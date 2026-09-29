@@ -30,8 +30,9 @@ and starts the API on `http://127.0.0.1:8765`. Later runs reuse all of that.
 
 - Linux on x86-64 or aarch64.
 - An NVIDIA GPU with at least 20 GiB of memory. The model uses about 9 GiB at
-  the full 16K context. Tested on the RTX PRO 6000; designed for RTX 4090 class
-  24 GB cards; the NVIDIA DGX Spark (GB10, unified memory) is supported.
+  the full 16K context. Designed for RTX 4090 class 24 GB cards; the NVIDIA DGX Spark
+  (GB10, unified memory) is supported.
+  Tested on RTX PRO 6000, RTX 4090 and DGX Spark; speed is on the model card.
 - Free memory at startup: 14 GiB on cards up to 32 GiB, 30 GiB on larger cards.
   At least 4 GiB (10 GiB on larger cards) must stay free while serving.
 - NVIDIA driver, CUDA toolkit 12.9 or later (`nvcc`), CMake, a C++17 compiler
