@@ -23,14 +23,15 @@ echo "shingi-27b: the first build compiles CUDA kernels and can take a while"
 if [ ! -e "$PRISM" ]; then
     mkdir -p "$SHINGI_HOME"
     git clone --quiet --no-checkout "$PRISM_URL" "$PRISM"
-fi
-if [ -n "$(git -C "$PRISM" status --porcelain --untracked-files=no)" ]; then
-    echo "shingi-27b: $PRISM has local changes; move it away and run again" >&2
-    exit 1
+    git -C "$PRISM" checkout --quiet --detach "$PRISM_REVISION"
 fi
 if [ "$(git -C "$PRISM" rev-parse HEAD 2>/dev/null)" != "$PRISM_REVISION" ]; then
     git -C "$PRISM" fetch --quiet origin "$PRISM_REVISION"
     git -C "$PRISM" checkout --quiet --detach "$PRISM_REVISION"
+fi
+if [ -n "$(git -C "$PRISM" status --porcelain --untracked-files=no)" ]; then
+    echo "shingi-27b: $PRISM has local changes; move it away and run again" >&2
+    exit 1
 fi
 
 jobs="$(nproc)"
