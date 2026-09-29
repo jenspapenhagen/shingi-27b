@@ -1,0 +1,77 @@
+{
+  "parameters": {
+    "temperature": 1.0,
+    "noul_temperature": 1.25,
+    "noul_bias": 0.0
+  },
+  "fit_records": 1276,
+  "choice_score_records": 1056,
+  "noul_records": 220,
+  "grid": {
+    "temperatures": [
+      0.5,
+      0.65,
+      0.8,
+      1.0,
+      1.25,
+      1.5,
+      2.0,
+      2.5,
+      3.0,
+      4.0
+    ],
+    "noul_biases": [
+      0.0
+    ]
+  },
+  "before": {
+    "choice_score_nll": 0.6340668104525349,
+    "noul_nll": 0.3180781955467112
+  },
+  "after": {
+    "choice_score_nll": 0.6340668104525349,
+    "noul_nll": 0.3072396297437681
+  },
+  "limitations": "Global temperatures only; no weight changes. The yes/no bias is not fitted because the split's yes/no pool is small and its gold-yes share reflects a few sources.",
+  "objective": "hard-label NLL on the frozen data v3 calibration split only; temperatures only, yes/no bias fixed at 0",
+  "noul_pool": {
+    "records": 220,
+    "gold_yes": 110,
+    "gold_yes_share": 0.5,
+    "by_source": {
+      "civil_comments": {
+        "records": 40,
+        "gold_yes": 20
+      },
+      "gsm8k_judge": {
+        "records": 80,
+        "gold_yes": 40
+      },
+      "synth_arithmetic": {
+        "records": 2,
+        "gold_yes": 1
+      },
+      "synth_judge": {
+        "records": 80,
+        "gold_yes": 40
+      },
+      "synth_policy": {
+        "records": 4,
+        "gold_yes": 2
+      },
+      "synth_state": {
+        "records": 14,
+        "gold_yes": 7
+      }
+    }
+  },
+  "provenance": {
+    "source_revision": "18e4235aae7a8d449d1eb9098bbbe10305790574",
+    "model_sha256": "277d970372fac37185bb621341d99bec3c7f1d86c6657d27ca18a6dcf930bd03",
+    "adapter_sha256": null,
+    "executable_sha256": "dd71ef5ac08ac18e2028db3dd84dcca7864f12b904fb9a76379c12c0f034c2fb",
+    "data_manifest_sha256": "1e3ebc747608e7010e6f83e9ae203e41892851ab174391c6fcffa5efa9d8d4af",
+    "choice_order": "canonical",
+    "predictions_sha256": "9a5d58973b1f04985020b54d5ac0921a7f27ae5dad6df931e81338d48f040aa0"
+  }
+}

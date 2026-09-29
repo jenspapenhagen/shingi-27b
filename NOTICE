@@ -1,0 +1,56 @@
+Shingi 27B
+Copyright 2026 Kortexa AI
+
+The software in this repository is licensed under Apache-2.0 (see LICENSE).
+The model weights and the external runtime retain their separate terms.
+
+Bonsai by Prism ML
+The Shingi 27B weights (https://huggingface.co/kortexa-ai/shingi-27b) are
+derived from prism-ml/Ternary-Bonsai-2-27B-gguf, revision
+6ed5e12bf84b7a63069882c91dd9e9218647d17b, which is provided under Apache-2.0.
+Created using Bonsai by Prism ML. The upstream notice credits Prism ML, Inc.
+and the Qwen3.8-27B base from Alibaba Cloud. Shingi 27B keeps Bonsai's ternary
+PQ2_0 weights and changes their per-block scales by training. Preserve Bonsai's
+LICENSE and NOTICE.txt when redistributing the weights. No upstream author
+endorses the resulting model.
+https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf
+
+Prism runtime / llama.cpp
+run.sh builds the public PrismML-Eng/llama.cpp fork at
+d8f26eec76da6d09bb708bcba51ef64b8cd868a3 from source.
+Its code is MIT licensed, copyright 2023-2026 The ggml authors. No runtime
+binaries are included in this repository. Preserve the runtime's LICENSE and
+third-party notices when redistributing its binaries.
+https://github.com/PrismML-Eng/llama.cpp
+
+OpenJev and TypeSafe
+OpenJev's public helper and the TypeSafe system-one adapter informed Shingi's
+letter scoring, chunk-and-anchor composition, confidence formulas, and HTTP
+interface. OpenJev explicitly licenses helper/ under Apache-2.0; the TypeSafe
+adapter is MIT licensed (Copyright 2026 TypeSafe AI):
+https://huggingface.co/openjev/openjev/blob/5ec9e5fd2f80a6fff386779b1e5ac7e389971889/helper/shim.py
+https://github.com/typesafe-ai/system-one-adapter-python/tree/adffc2eab300a4fa3c0e92252d4ffd6ceaa53700
+No OpenJev weights are included. This is an independent project.
+
+TypeSafe adapter MIT permission notice
+MIT License
+
+Copyright (c) 2026 TypeSafe AI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
