@@ -13,6 +13,8 @@ and the Qwen3.8-27B base from Alibaba Cloud. Shingi 27B keeps Bonsai's ternary
 PQ2_0 weights and changes their per-block scales by training. Preserve Bonsai's
 LICENSE and NOTICE.txt when redistributing the weights. No upstream author
 endorses the resulting model.
+Image input downloads and uses Bonsai's unchanged vision projector,
+Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf from the same revision (Apache-2.0).
 https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf
 
 Prism runtime / llama.cpp

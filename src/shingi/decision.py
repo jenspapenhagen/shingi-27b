@@ -9,6 +9,8 @@ from typing import Protocol
 
 LETTERS = string.ascii_uppercase + string.ascii_lowercase
 MODEL_ID = "shingi-27b"
+# mtmd's default media marker; the readout replaces each one with an image's tokens.
+MEDIA_MARKER = "<__media__>"
 
 
 def describe(value):
@@ -17,9 +19,12 @@ def describe(value):
     return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
 
 
-def prompt_for(state, instructions, options):
+def prompt_for(state, instructions, options, images=0):
     lines = "\n".join(f"[{LETTERS[i]}] {key}: {describe(value)}" for i, (key, value) in enumerate(options))
     text = f"State:\n{describe(state)}\n\nQuestion: {describe(instructions)}\nOptions:\n{lines}\n\nAnswer with the letter of the best option only."
+    # Images open the user turn, in order, directly followed by the text: llama-server renders an
+    # image part followed by a text part the same way for this chat template.
+    text = MEDIA_MARKER * images + text
     # Verified against Prism /apply-template with enable_thinking=False.
     return f"<|im_start|>user\n{text}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
 
@@ -57,7 +62,8 @@ class Calibration:
 
 
 class Readout(Protocol):
-    def infer(self, prompt: str, labels: list[str]) -> dict: ...
+    # Text-only calls pass no images argument; images are base64 strings in prompt order.
+    def infer(self, prompt: str, labels: list[str], images: list[str] | None = None) -> dict: ...
 
 
 class DecisionEngine:
@@ -66,27 +72,33 @@ class DecisionEngine:
         self.calibration = calibration
         self.model_id = model_id
 
-    def distribution(self, state, instructions, options):
+    @property
+    def vision(self):
+        return bool(getattr(self.backend, "vision", False))
+
+    def distribution(self, state, instructions, options, images=(), temperature=1.0):
         if len(options) <= len(LETTERS):
-            result = self.backend.infer(prompt_for(state, instructions, options), list(LETTERS[:len(options)]))
+            prompt = prompt_for(state, instructions, options, len(images))
+            labels = list(LETTERS[:len(options)])
+            result = self.backend.infer(prompt, labels, list(images)) if images else self.backend.infer(prompt, labels)
             logits = result["logits"]
             if len(logits) != len(options) or any(not math.isfinite(x) for x in logits):
                 raise RuntimeError("incomplete or non-finite candidate logits")
-            p = softmax([x / self.calibration.temperature for x in logits])
+            p = softmax([x / self.calibration.temperature / temperature for x in logits])
             return p, [result]
         # OpenJev-style approximate anchor composition. All labels retain mass;
         # this is not a single forward pass or an exact global softmax.
         n_chunks = math.ceil(len(options) / len(LETTERS))
         chunk_size = math.ceil(len(options) / n_chunks)
         chunks = [options[i:i + chunk_size] for i in range(0, len(options), chunk_size)]
-        parts = [self.distribution(state, instructions, c) for c in chunks]
+        parts = [self.distribution(state, instructions, c, images, temperature) for c in chunks]
         winners = [max(range(len(p)), key=p.__getitem__) for p, _ in parts]
-        final, traces = self.distribution(state, instructions, [c[w] for c, w in zip(chunks, winners)])
+        final, traces = self.distribution(state, instructions, [c[w] for c, w in zip(chunks, winners)], images, temperature)
         values = [final[j] * value / p[w] for j, ((p, _), w) in enumerate(zip(parts, winners)) for value in p]
         total = sum(values)
         return [x / total for x in values], [trace for _, batch in parts for trace in batch] + traces
 
-    def answer(self, state, q):
+    def answer(self, state, q, images=(), temperature=1.0):
         instructions = q["instructions"]
         kind = q["type"]
         if kind == "choice":
@@ -99,11 +111,12 @@ class DecisionEngine:
             criteria = q.get("criteria") or {}
             options = [("yes", criteria.get("true") or "The statement is true."),
                        ("no", criteria.get("false") or "The statement is false.")]
-        p, traces = self.distribution(state, instructions, options)
+        p, traces = self.distribution(state, instructions, options, images, temperature)
         if kind == "noul":
             # Work from logits, not clipped probabilities, to retain the tails.
             logits = traces[0]["logits"]
-            log_odds = (logits[0] - logits[1]) / self.calibration.temperature / self.calibration.noul_temperature + self.calibration.noul_bias
+            log_odds = ((logits[0] - logits[1]) / self.calibration.temperature / self.calibration.noul_temperature
+                        + self.calibration.noul_bias) / temperature
             yes = softmax([log_odds, 0.0])[0]
             answer = {"type": kind, "noul": yes}
         else:
@@ -117,10 +130,23 @@ class DecisionEngine:
                           "legend": dict(options), "probabilities": probabilities, "confidence": score_confidence(p)}
         return answer, traces
 
-    def evaluate(self, request):
+    def evaluate(self, request, temperature=1.0):
+        images = request.get("images") or []
         answers, traces = {}, {}
         for key, question in request["questions"].items():
-            answers[key], traces[key] = self.answer(request["state"], question)
+            answers[key], traces[key] = self.answer(request["state"], question, images, temperature)
         calls = [x for group in traces.values() for x in group]
-        return {"model": self.model_id, "answers": answers,
-                "usage": {"input_tokens": sum(x["input_tokens"] for x in calls), "output_tokens": 0}}, traces
+        usage = {"input_tokens": sum(x["input_tokens"] for x in calls), "output_tokens": 0}
+        if images:
+            # Every question is a separate prefill, so each one encodes the images again.
+            usage |= {"images": len(images), "image_tokens": sum(x.get("image_tokens", 0) for x in calls),
+                      "prefill_ms": round(sum(x.get("prefill_ms", 0) for x in calls), 3)}
+        return {"model": self.model_id, "answers": answers, "usage": usage}, traces
+
+
+def label_mass(trace):
+    """Full-vocabulary probability of the candidate labels, when the readout reports its normalizer."""
+    normalizer = trace.get("log_normalizer")
+    if normalizer is None:
+        return None
+    return math.fsum(math.exp(x - normalizer) for x in trace["logits"])

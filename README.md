@@ -2,9 +2,9 @@
 
 # Shingi 27B
 
-Shingi 27B is a local decision model. Give it context, a question and the
-possible answers; it returns a choice, calibrated probabilities or an ordinal
-score. It reads every candidate answer's logit directly and generates no text,
+Shingi 27B is a local decision model. Give it context (text and, optionally,
+images), a question and the possible answers; it returns a choice, calibrated
+probabilities or an ordinal score. It reads every candidate answer's logit directly and generates no text,
 so there is nothing to parse. The model is Bonsai 2 27B (ternary PQ2_0) with
 trained per-block scales, served through the Prism llama.cpp runtime.
 
@@ -23,8 +23,9 @@ cd shingi-27b
 ```
 
 The first run builds the pinned Prism runtime and the readout, sets up the
-Python environment, downloads the model (about 7.2 GB), verifies its SHA-256,
-and starts the API on `http://127.0.0.1:8765`. Later runs reuse all of that.
+Python environment, downloads the model (about 7.2 GB) and the Bonsai 2 27B
+vision projector (about 0.6 GB), verifies their SHA-256, and starts the API on
+`http://127.0.0.1:8765`. Later runs reuse all of that.
 
 ## Requirements
 
@@ -62,6 +63,7 @@ roughly 12.6 s. The model uses about 8 GB at the full 16K context.
 | Model revision | `main` | `SHINGI_REVISION` |
 | Build and checkout | `~/.cache/shingi-27b` | `SHINGI_HOME` |
 | CUDA architectures (Linux) | `86;89;120;121` | `SHINGI_CUDA_ARCHITECTURES` |
+| Image input | on | `--no-vision` (text only, less memory) |
 
 Pass arguments through the one-liner with `bash -s --`:
 
@@ -76,7 +78,7 @@ If you already have a readout built against the pinned Prism runtime, run the
 server directly. An omitted model or calibration is downloaded from the Hub:
 
 ```bash
-uv run shingi-27b --executable PATH [--model PATH] [--calibration PATH] [--port N]
+uv run shingi-27b --executable PATH [--model PATH] [--calibration PATH] [--mmproj PATH] [--port N]
 ```
 
 `--skip-verify` skips the SHA-256 checks for people who know what they are doing.
@@ -106,9 +108,47 @@ curl -s http://127.0.0.1:8765/v1/systemone \
 ```
 
 The answer's `noul` is the probability of yes. `GET /v1/version` reports the
-model ID, the GGUF SHA-256, the calibration and the runtime revision;
-`GET /health` reports readiness. The API is compatible with the
-[TypeSafe](https://docs.typesafe.ai/api) System One primitives.
+model ID, the GGUF SHA-256, the calibration, the runtime revision and whether
+image input is loaded; `GET /health` reports readiness. The API is compatible
+with the [TypeSafe](https://docs.typesafe.ai/api) System One primitives.
+
+### Images
+
+Add an `images` list to a request: up to 8 PNG, JPEG, GIF or BMP images, each
+as base64 bytes or a `data:image/...;base64,` URL, at most 20 MiB each. They
+are placed in order before the text, and every image uses at least 1,024 of
+the 16,384 context tokens. Each question is a separate pass that reads the
+images again, so every extra question about the same images costs a full
+image pass. Text must not contain the `<__media__>` marker when images are
+attached.
+
+```bash
+IMAGE=$(base64 < photo.png | tr -d '\n')
+curl -s http://127.0.0.1:8765/v1/systemone -H 'Content-Type: application/json' -d @- <<JSON
+{"model":"shingi-27b","state":"A photo from the loading dock.","images":["$IMAGE"],
+ "questions":{"damaged":{"type":"noul","instructions":"Is the parcel damaged?"}}}
+JSON
+```
+
+### SGLang decisions
+
+`POST /v1/decisions` accepts the request shapes of SGLang's
+[decision route](https://docs.sglang.io/docs/supported-models/decision_models),
+so SGLang clients can use Shingi by changing the base URL. A body with an
+`input` and a list of `choice`, `score` and `yes_no` questions returns the
+generic answers (`probabilities`, `choice` or `score`, `label_mass`); a body
+with a `state` and named `choice`, `score` and `noul` questions returns System
+One answers with `decision`, as SGLang serves decision models. Both accept
+`images` and an optional `temperature`. Shingi uses its own prompt for both.
+
+```bash
+curl -s http://127.0.0.1:8765/v1/decisions -H 'Content-Type: application/json' -d @- <<JSON
+{"input":"The integration keeps failing and I am losing sales.",
+ "questions":[{"id":"urgent","type":"yes_no","question":"The customer needs an answer today."},
+              {"id":"team","type":"choice","question":"Which team should handle this?",
+               "options":[{"name":"billing"},{"name":"technical"},{"name":"sales"}]}]}
+JSON
+```
 
 ## Model card
 
@@ -118,4 +158,5 @@ Training, evaluation results and limitations are on the
 ## License
 
 The code is Apache-2.0 (see [LICENSE](LICENSE)). The weights derive from Bonsai
-2 27B by Prism ML (Apache-2.0); the Prism runtime is MIT. See [NOTICE](NOTICE).
+2 27B by Prism ML (Apache-2.0), and image input uses its vision projector
+unchanged; the Prism runtime is MIT. See [NOTICE](NOTICE).

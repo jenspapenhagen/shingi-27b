@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build the pinned Prism llama.cpp runtime and Shingi's native readout into $SHINGI_HOME.
-# Uses CUDA on Linux and Metal on macOS (Apple Silicon).
+# Build the pinned Prism llama.cpp runtime, its multimodal library (mtmd) and Shingi's native
+# readout into $SHINGI_HOME. Uses CUDA on Linux and Metal on macOS (Apple Silicon).
 # Skips all work when the readout was already built from the same revision, backend, architectures and source.
 set -euo pipefail
 
@@ -16,10 +16,10 @@ STAMP="$READOUT.stamp"
 if [ "$(uname -s)" = Darwin ]; then
     # Metal builds use their own build directory and stamp, so a CUDA build is never reused.
     BUILD="$PRISM/build-metal"
-    stamp="$PRISM_REVISION Darwin-metal $(shasum -a 256 "$ROOT/src/native/readout.cpp" | cut -d' ' -f1)"
+    stamp="$PRISM_REVISION Darwin-metal mtmd $(shasum -a 256 "$ROOT/src/native/readout.cpp" | cut -d' ' -f1)"
 else
     BUILD="$PRISM/build"
-    stamp="$PRISM_REVISION $ARCHITECTURES $(sha256sum "$ROOT/src/native/readout.cpp" | cut -d' ' -f1)"
+    stamp="$PRISM_REVISION $ARCHITECTURES mtmd $(sha256sum "$ROOT/src/native/readout.cpp" | cut -d' ' -f1)"
 fi
 if [ -x "$READOUT" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$stamp" ]; then
     echo "shingi-27b: runtime already built at $PRISM_REVISION"
@@ -49,21 +49,24 @@ if [ "$(uname -s)" = Darwin ]; then
     jobs="$(sysctl -n hw.ncpu)"
     cmake -S "$PRISM" -B "$BUILD" \
         -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=ON -DGGML_OPENMP=OFF -DBUILD_SHARED_LIBS=ON \
-        -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_CURL=OFF
+        -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_CURL=OFF \
+        -DLLAMA_BUILD_MTMD=ON -DMTMD_VIDEO=OFF
 else
     jobs="$(nproc)"
     [ "$jobs" -le 8 ] || jobs=8  # CUDA kernel compilation needs several GB of RAM per job.
     cmake -S "$PRISM" -B "$BUILD" \
         -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DGGML_NATIVE=OFF \
         -DCMAKE_CUDA_ARCHITECTURES="$ARCHITECTURES" -DBUILD_SHARED_LIBS=ON \
-        -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF
+        -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF \
+        -DLLAMA_BUILD_MTMD=ON -DMTMD_VIDEO=OFF
 fi
-cmake --build "$BUILD" --target llama --parallel "$jobs"
+# mtmd is the image encoder library; the readout loads it only when a vision projector is given.
+cmake --build "$BUILD" --target llama mtmd --parallel "$jobs"
 
 mkdir -p "$SHINGI_HOME/bin"
 c++ -std=c++17 -O2 -Wall -Wextra "$ROOT/src/native/readout.cpp" \
-    -I"$PRISM/include" -I"$PRISM/ggml/include" -I"$PRISM/vendor" \
+    -I"$PRISM/include" -I"$PRISM/ggml/include" -I"$PRISM/vendor" -I"$PRISM/tools/mtmd" \
     -L"$BUILD/bin" -Wl,-rpath,"$BUILD/bin" \
-    -lllama -lggml -lggml-base -o "$READOUT"
+    -lmtmd -lllama -lggml -lggml-base -o "$READOUT"
 printf '%s\n' "$stamp" > "$STAMP"
 echo "shingi-27b: built $READOUT"

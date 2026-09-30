@@ -13,6 +13,11 @@ CALIBRATION_FILE = "calibration.json"
 CALIBRATION_SHA256 = "cb894624520884d7d002c958099fa285ee62eae8d4fdac0fe369e7b519f1f16c"
 RUNTIME = {"repository": "https://github.com/PrismML-Eng/llama.cpp",
            "revision": "d8f26eec76da6d09bb708bcba51ef64b8cd868a3"}
+# Bonsai 2 27B vision projector (Apache-2.0), used unchanged. One pinned source.
+PROJECTOR = {"repository": "prism-ml/Ternary-Bonsai-2-27B-gguf",
+             "revision": "6ed5e12bf84b7a63069882c91dd9e9218647d17b",
+             "filename": "Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf",
+             "sha256": "6807ede61d570bb86ba34b756a0fa109edc33668604de867c6ea6d8f1d631903"}
 
 
 def sha256(path):
@@ -24,6 +29,12 @@ def fetch(filename):
     """Download a release file into the standard Hugging Face cache (honours HF_HOME and HF_TOKEN)."""
     from huggingface_hub import hf_hub_download
     return Path(hf_hub_download(HF_REPO, filename, revision=os.environ.get("SHINGI_REVISION", "main")))
+
+
+def fetch_projector():
+    """Download the pinned vision projector into the standard Hugging Face cache."""
+    from huggingface_hub import hf_hub_download
+    return Path(hf_hub_download(PROJECTOR["repository"], PROJECTOR["filename"], revision=PROJECTOR["revision"]))
 
 
 def verify(what, actual, expected):

@@ -10,17 +10,20 @@ CONTEXT_TOKENS = 16384
 
 
 class NativeReadout:
-    def __init__(self, executable, model):
+    def __init__(self, executable, model, projector=None):
         self.lock = threading.Lock()
         _, preload, self.headroom = gpu_profile()
         if gpu_free_mib() < preload:
             raise RuntimeError(f"Shingi 27B requires at least {preload} MiB free on the GPU before loading")
-        self.process = subprocess.Popen([str(executable), str(model), str(CONTEXT_TOKENS)],
-                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+        # The optional third argument is the vision projector; without it the readout is text only.
+        command = [str(executable), str(model), str(CONTEXT_TOKENS)] + ([str(projector)] if projector else [])
+        self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
         try:
             self.info = self._read(300)
             if not self.info.get("ready"):
                 raise RuntimeError("native model failed to initialize")
+            if bool(projector) != bool(self.info.get("vision")):
+                raise RuntimeError("native readout vision state does not match the requested projector")
             if gpu_free_mib() < self.headroom:
                 raise RuntimeError("insufficient GPU headroom after model load")
         except BaseException:
@@ -45,14 +48,21 @@ class NativeReadout:
             raise error(result["error"])
         return result
 
-    def infer(self, prompt, labels):
+    @property
+    def vision(self):
+        return bool(self.info.get("vision"))
+
+    def infer(self, prompt, labels, images=None):
         with self.lock:
             if gpu_free_mib() < self.headroom:
                 self.close()
                 raise RuntimeError("GPU headroom fell below profile floor; native model stopped")
             if self.process.poll() is not None:
                 raise RuntimeError("native readout is not running")
-            self.process.stdin.write(json.dumps({"prompt": prompt, "labels": labels}) + "\n")
+            request = {"prompt": prompt, "labels": labels}
+            if images:
+                request["images"] = images
+            self.process.stdin.write(json.dumps(request) + "\n")
             self.process.stdin.flush()
             return self._read(300)
 
