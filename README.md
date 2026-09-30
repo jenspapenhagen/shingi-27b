@@ -31,7 +31,7 @@ vision projector (about 0.6 GB), verifies their SHA-256, and starts the API on
 
 - Linux on x86-64 or aarch64 with an NVIDIA GPU, or macOS on Apple Silicon
   (see [macOS](#macos)).
-- An NVIDIA GPU with at least 20 GiB of memory. The model uses about 9 GiB at
+- An NVIDIA GPU with at least 20 GiB of memory. The model uses about 9.2 GiB with image input (8.2 GiB with `--no-vision`) at
   the full 16K context. Designed for RTX 4090 class 24 GB cards; the NVIDIA DGX Spark
   (GB10, unified memory) is supported.
   Tested on RTX PRO 6000, RTX 4090 and DGX Spark; speed is on the model card.
@@ -50,7 +50,7 @@ more is recommended; 16 GB is the minimum. At startup 12 GiB must be free, and
 
 Macs are much slower than CUDA GPUs. On an M4 Pro (64 GB) the examples below
 (about 70 tokens) take roughly 1.2 s each and a request of about 1,100 tokens
-roughly 12.6 s. The model uses about 8 GB at the full 16K context.
+roughly 12.6 s. The model uses about 8–9 GB at the full 16K context.
 
 ## Configuration
 

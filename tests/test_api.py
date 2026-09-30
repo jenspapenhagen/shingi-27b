@@ -194,3 +194,19 @@ def test_real_typesafe_sdk_over_http():
         server.should_exit = True
         thread.join(timeout=5)
         sock.close()
+
+
+def test_validation_errors_do_not_echo_the_request_body():
+    from fastapi.testclient import TestClient
+    from shingi.server import create_app
+    marker = "A" * 5000
+    app = create_app(engine=_FakeEngineForValidation())
+    with TestClient(app) as client:
+        response = client.post("/v1/systemone", json={"model": "shingi-27b", "state": "x", "questions": {"q": {"type": "bogus", "instructions": marker}}})
+    assert response.status_code == 422
+    assert marker not in response.text
+
+
+class _FakeEngineForValidation:
+    def __getattr__(self, name):
+        raise AssertionError("the engine must not be called for invalid requests")

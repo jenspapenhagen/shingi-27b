@@ -4,6 +4,8 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 import uvicorn
 
 from .backend import CONTEXT_TOKENS, NativeReadout
@@ -77,6 +79,12 @@ def create_app(engine=None, *, executable=None, model=None, identity=None,
                 backend.close()
 
     app = FastAPI(title="Shingi 27B", lifespan=lifespan)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request, exc):
+        # Report where and why, but never echo the request body back (images can be megabytes).
+        errors = [{"loc": e.get("loc"), "msg": e.get("msg"), "type": e.get("type")} for e in exc.errors()]
+        return JSONResponse(status_code=422, content={"detail": errors})
     app.state.engine = engine
 
     @app.get("/health")
