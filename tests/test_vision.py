@@ -118,7 +118,8 @@ def test_systemone_images_reach_every_question_in_order():
     assert [call[2] for call in backend.calls] == [[PNG_B64, JPEG_B64]] * 2
     assert all(call[0].count(MEDIA_MARKER) == 2 for call in backend.calls)
     usage = response.json()["usage"]
-    assert usage["images"] == 2 and usage["image_tokens"] == 4096 and usage["input_tokens"] == 2 * (50 + 2048)
+    # The images count once per request; every prompt still counts in full.
+    assert usage["images"] == 2 and usage["image_tokens"] == 2048 and usage["input_tokens"] == 2 * (50 + 2048)
 
 
 def test_images_without_a_projector_are_rejected_before_inference():
@@ -269,8 +270,11 @@ def test_generic_body_accepts_disabled_thinking_and_the_served_format():
 
 FAKE_READOUT = textwrap.dedent("""
     import json, sys
-    vision = len(sys.argv) == 4
-    print(json.dumps({"ready": True, "vision": vision, "argv": sys.argv[1:]}), flush=True)
+    args = sys.argv[1:]
+    while len(args) >= 2 and args[-2].startswith("--"):
+        args = args[:-2]
+    vision = len(args) == 3
+    print(json.dumps({"ready": True, "vision": vision, "argv": args}), flush=True)
     for line in sys.stdin:
         print(json.dumps({"logits": [0.0, 0.0], "input_tokens": 1, "echo": line}), flush=True)
 """)
